@@ -7,6 +7,13 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class SessionIdentityTests: XCTestCase {
+    func testConversationAvatarUsesReadableInitialsAndHandlesBlankNames() {
+        XCTAssertEqual(ConversationAvatar.initials(for: "Hermes Agent"), "HA")
+        XCTAssertEqual(ConversationAvatar.initials(for: "  release-review  "), "RR")
+        XCTAssertEqual(ConversationAvatar.initials(for: ""), "H")
+        XCTAssertEqual(ConversationAvatar.initials(for: "山田 太郎"), "山太")
+    }
+
     func testSessionRowDisplayTitlePreservesLongTitleAndFallsBackForBlankTitle() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -32,7 +39,7 @@ final class SessionIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(SessionRowView.displayTitle(for: session), longTitle)
-        XCTAssertEqual(SessionRowView.displayTitle(for: untitled), "Untitled Session")
+        XCTAssertEqual(SessionRowView.displayTitle(for: untitled), "New Chat")
     }
 
     func testSessionRowActiveStreamingUsesStreamingFlagOrActiveStreamID() {

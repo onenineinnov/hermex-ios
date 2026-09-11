@@ -2,6 +2,24 @@ import XCTest
 @testable import HermesMobile
 
 final class SessionNavigationStateTests: XCTestCase {
+    func testLaunchStartsInInboxEvenWithRememberedSession() {
+        let state = SessionNavigationState(lastSelectedSessionID: "previous-chat")
+        XCTAssertNil(state.destination)
+        XCTAssertNil(state.selectedSessionID)
+        XCTAssertEqual(state.lastSelectedSessionID, "previous-chat")
+    }
+
+    func testToolsReturnToInboxAndExplicitChatStillOpens() {
+        var state = SessionNavigationState(lastSelectedSessionID: "previous-chat")
+        state.select(SessionListUtilityDestination.tools)
+        XCTAssertEqual(state.destination, .utility(.tools))
+        state.clearDestination()
+        XCTAssertNil(state.destination)
+        let linked = SessionSummary(sessionId: "linked-chat", title: "Linked chat")
+        state.select(linked)
+        XCTAssertEqual(state.destination, .session(linked))
+    }
+
     func testSelectingSessionUpdatesDestinationAndRestorationID() {
         let session = SessionSummary(sessionId: "session-1", title: "One")
         var state = SessionNavigationState()

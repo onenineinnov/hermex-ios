@@ -3027,23 +3027,28 @@ struct ChatToolbarTitleLabel: View {
     let subtitle: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            if showsSubtitle, let subtitle {
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                ConversationAvatar(name: "Hermes", size: 32)
+            }
+            VStack(alignment: .center, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(.tail)
+
+                if showsSubtitle, let subtitle {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .multilineTextAlignment(.center)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }

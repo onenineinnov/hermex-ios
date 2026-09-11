@@ -405,9 +405,10 @@ struct SessionListRowsSection: View {
     var suppressEmptyState = false
 
     var body: some View {
-        sessionsHeaderRow
-            .padding(.top, isSearchActive ? 16 : 28)
-            .sessionsScreenListRow()
+        if isSearchActive && viewModel.isSearchingRemoteSessions {
+            ProgressView("Searching sessions")
+                .sessionsScreenListRow(insets: EdgeInsets(top: 8, leading: 24, bottom: 8, trailing: 24))
+        }
 
         if viewModel.isLoading && viewModel.sessions.isEmpty {
             sessionLoadingSkeletonRows
@@ -435,28 +436,6 @@ struct SessionListRowsSection: View {
                 )
             }
         }
-    }
-
-    private var sessionsHeaderRow: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                if !isSearchActive {
-                    Text("Sessions")
-                        .font(.title3.bold())
-                        .foregroundStyle(.primary)
-                }
-
-                Spacer()
-
-                if viewModel.isSearchingRemoteSessions {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Searching sessions")
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 12)
     }
 
     private var sessionLoadingSkeletonRows: some View {
@@ -565,6 +544,8 @@ struct SessionInteractiveRow: View {
             )
         }
         .sessionsScreenListRow(insets: EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
+        .listRowSeparator(.visible, edges: .bottom)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 76 }
     }
 
     @ViewBuilder

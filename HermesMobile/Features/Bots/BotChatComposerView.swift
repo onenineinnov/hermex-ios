@@ -50,34 +50,17 @@ struct BotChatComposerView: View {
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
                         placeholder: String(localized: "Message bot"), acceptsAttachments: false
                     )
-                    if !isFocused { actionButton }
+                    actionButton
                 }
-                .padding(.trailing, isFocused ? 0 : ChatComposerMetrics.pillInset)
+                .padding(.trailing, ChatComposerMetrics.pillInset)
                 .padding(.vertical, isFocused ? 0 : ChatComposerMetrics.pillInset)
                 .padding(.top, isFocused ? 2 : 0)
                 .padding(.bottom, isFocused ? 4 : 0)
                 .modifier(ChatComposerSurfaceStyle(isExpanded: isFocused))
                 .padding(.horizontal, 16)
-
-                if isFocused {
-                    HStack {
-                        Spacer(minLength: 0)
-                        actionButton
-                    }
-                    .padding(.horizontal, 16)
-                    // Sessions adds a 6 pt stack gap before its 8 pt toolbar inset.
-                    .padding(.top, 14)
-                    .background(
-                        Color(.systemBackground)
-                            .padding(.top, -10).padding(.bottom, -12)
-                            .ignoresSafeArea(edges: .bottom)
-                    )
-                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-                }
             }
-            // Focus flips arrive from UIKit outside any withAnimation, so the
-            // pill-to-card morph and the row's insertion animate from here,
-            // exactly as the Sessions composer does.
+            // Focus comes from UIKit; animate the field's growth here while
+            // respecting Reduce Motion, as the Sessions composer does.
             .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isFocused)
         }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
