@@ -38,11 +38,13 @@ struct ComposerTextInputView: View {
     let onTapQuote: (ComposerQuote) -> Void
     let onRemoveQuote: (UUID) -> Void
 
-    var placeholder = String(localized: "Ask anything... /commands")
+    var placeholder = String(localized: "Message Hermex")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
     var acceptsAttachments = true
     private let collapsedLineHeight: CGFloat = 22
-    private let expandedMinimumHeight: CGFloat = 72
+    // Keep the focused editor tall enough to feel like a real message field
+    // even before UIKit reports the first measured text height.
+    private let expandedMinimumHeight: CGFloat = 46
 
     var body: some View {
         ZStack(alignment: isCollapsed ? .leading : .topLeading) {

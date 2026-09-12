@@ -4,9 +4,6 @@ import UIKit
 
 @MainActor
 struct SessionListView: View {
-    private static let searchChromeIconVisualSize: CGFloat = 36
-    private static let searchChromeIconHitTarget: CGFloat = 44
-
     @Bindable var authManager: AuthManager
     let server: URL
     private let draftStore: ChatDraftStore
@@ -18,10 +15,8 @@ struct SessionListView: View {
     @Binding private var requestedNewChat: NewChatRequest?
 
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var viewModel: SessionListViewModel
     @State private var navigationState: SessionNavigationState
     @State private var sessionPendingRename: SessionSummary?
@@ -37,13 +32,10 @@ struct SessionListView: View {
     @State private var searchText = ""
     @State private var showsBots = false
     @State private var isSearchVisible = false
-    @State private var isSearchFocused = false
-    @State private var searchChromeIsExpanded = false
     @State private var selectedProjectID: String?
     @State private var sidebarScrollPosition: String?
     @State private var didCompleteInitialLoad = false
     @State private var returnRefreshID: UUID?
-    @FocusState private var searchFieldIsFocused: Bool
     @AppStorage(SessionSidebarDisclosureSettings.profilesAreExpandedKey)
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
     @AppStorage(SessionSidebarDisclosureSettings.projectsAreExpandedKey)
@@ -69,9 +61,6 @@ struct SessionListView: View {
     @AppStorage private var showsClaudeCodeSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
-    @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
-    @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
-    @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
@@ -243,9 +232,8 @@ struct SessionListView: View {
                 )
                 guard !Task.isCancelled else { return }
                 didCompleteInitialLoad = true
-                // Ordered after the deep link so restoreIfNeeded() sees the explicit
-                // destination and leaves the stored selection alone.
-                restoreLastSelectedSessionIfNeeded()
+                // Ordinary launches stay in Chats. Deep links, App Intents and
+                // shared drafts above still select their explicit destination.
             }
             .task(id: remoteSearchTaskID) {
                 await viewModel.searchSessions(query: searchText, content: true, depth: 5)
@@ -366,19 +354,48 @@ struct SessionListView: View {
     }
 
     private var sessionListSurface: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Color(.systemBackground)
-                .ignoresSafeArea()
-
-            content
-
-            if !isSearchingSessions {
-                newSessionButton
-                    .padding(.trailing, 24)
-                    .padding(.bottom, 22)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+        content
+            .navigationTitle("Chats")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(
+                text: $searchText,
+                isPresented: $isSearchVisible,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text("Search sessions")
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button { selectDestination(.tools) } label: {
+                            Label("Agent Tools", systemImage: "square.grid.2x2")
+                        }
+                        if isBotModeEnabled {
+                            Button { showsBots = true } label: {
+                                Label("Bots", systemImage: "bubble.left.and.bubble.right")
+                            }
+                        }
+                        Button { selectDestination(.settings(nil)) } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                        Divider()
+                        AvatarServerSwitcherMenu(
+                            model: AvatarServerSwitcherModel(
+                                servers: authManager.servers,
+                                activeServerID: authManager.activeServerID
+                            ),
+                            switchToServer: { authManager.switchActiveServer(to: $0) },
+                            addServer: { isPresentingAddServer = true },
+                            manageServers: { selectDestination(.settings(.servers)) }
+                        )
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Agent Tools")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    newSessionButton
+                }
             }
-        }
     }
 
     @ViewBuilder
@@ -432,6 +449,8 @@ struct SessionListView: View {
             switch destination {
             case .settings(let scrollTo):
                 SettingsView(authManager: authManager, server: server, initialScrollTarget: scrollTo)
+            case .tools:
+                agentTools
             case .tasks:
                 TasksView(server: server, onAPIError: authManager.handleAPIError)
             case .kanban:
@@ -472,44 +491,37 @@ struct SessionListView: View {
 
     private var content: some View {
         List {
-            header
-                .sessionsTopChromeListRow()
-
-            if isBotModeEnabled {
-                Picker("Screen", selection: $showsBots) {
-                    Text("Sessions").tag(false)
-                    Text("Bots").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .sessionsScreenListRow()
-            }
-
             if viewModel.isViewingCachedData {
                 OfflineCacheBanner()
                     .padding(.top, 16)
                     .sessionsScreenListRow()
             }
 
-            if !isSearchingSessions {
-                SessionSidebarUtilityRows(
-                    viewModel: viewModel,
-                    topPadding: 10,
-                    automatedVisibility: automatedSessionVisibility,
-                    sectionVisibility: sidebarSectionVisibility,
-                    profilesAreExpanded: $profilesAreExpanded,
-                    projectsAreExpanded: $projectsAreExpanded,
-                    selectedProjectID: $selectedProjectID,
-                    projectPendingDeletion: $projectPendingDeletion,
-                    projectPendingRename: $projectPendingRename,
-                    openDestination: selectDestination,
-                    switchActiveProfile: { profile in
-                        Task { await switchActiveProfile(profile) }
-                    },
-                    presentProjectCreation: {
-                        isPresentingProjectCreation = true
-                    }
-                )
+            if let selectedProjectID {
+                HStack {
+                    Label(viewModel.projects.first(where: { $0.id == selectedProjectID })?.name ?? String(localized: "Projects"), systemImage: "folder")
+                        .font(.subheadline)
+                    Spacer()
+                    Button("Clear") { self.selectedProjectID = nil }
+                }
+                .sessionsScreenListRow(insets: EdgeInsets(top: 8, leading: 24, bottom: 8, trailing: 24))
             }
+
+            SessionListRowsSection(
+                viewModel: viewModel,
+                searchText: searchText,
+                sessions: scheduledSessionGroups.ordinary,
+                emptyTitle: emptySessionsTitle,
+                emptyDescription: emptySessionsDescription,
+                isSearchActive: isSearchingSessions,
+                showsMessageCount: showsSessionMessageCount,
+                showsWorkspace: showsSessionWorkspace,
+                selectedSessionID: horizontalSizeClass == .regular
+                    ? navigationState.selectedSessionID
+                    : nil,
+                actions: sessionRowActions,
+                suppressEmptyState: !scheduledSessionGroups.scheduled.isEmpty
+            )
 
             if scheduledSessionGroups.showsDisclosure(isSearchActive: isSearchingSessions) {
                 ScheduledSessionsDisclosure(
@@ -529,29 +541,13 @@ struct SessionListView: View {
                 )
             }
 
-            SessionListRowsSection(
-                viewModel: viewModel,
-                searchText: searchText,
-                sessions: scheduledSessionGroups.ordinary,
-                emptyTitle: emptySessionsTitle,
-                emptyDescription: emptySessionsDescription,
-                isSearchActive: isSearchingSessions,
-                showsMessageCount: showsSessionMessageCount,
-                showsWorkspace: showsSessionWorkspace,
-                selectedSessionID: horizontalSizeClass == .regular
-                    ? navigationState.selectedSessionID
-                    : nil,
-                actions: sessionRowActions,
-                suppressEmptyState: !scheduledSessionGroups.scheduled.isEmpty
-            )
-
             if showsArchivedEntry {
                 archivedEntryRow
                     .sessionsScreenListRow()
             }
 
             Color.clear
-                .frame(height: 104)
+                .frame(height: 20)
                 .sessionsScreenListRow()
                 .accessibilityHidden(true)
         }
@@ -577,189 +573,53 @@ struct SessionListView: View {
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: scheduledSessionsAreExpanded)
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: searchChromeIsExpanded ? 0 : 16) {
-            HermesHeaderLogo(selectedColor: selectedHeaderLogoColor)
-                .frame(width: searchChromeIsExpanded ? 0 : 160, alignment: .leading)
-                .opacity(searchChromeIsExpanded ? 0 : 1)
-                .clipped()
-                .accessibilityHidden(searchChromeIsExpanded)
-
-            searchChrome
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: searchChromeIsExpanded)
-        .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsSearchClearButton)
-        .onChange(of: searchFieldIsFocused) { _, newValue in
-            handleSearchFieldFocusChange(newValue)
-        }
-    }
-
-    private var searchChrome: some View {
-        HStack(spacing: searchChromeIsExpanded ? 8 : 4) {
-            HapticButton {
-                if searchChromeIsExpanded {
-                    searchFieldIsFocused = true
-                } else {
-                    openSearch()
+    private var agentTools: some View {
+        List {
+            SessionSidebarUtilityRows(
+                viewModel: viewModel,
+                topPadding: 0,
+                automatedVisibility: automatedSessionVisibility,
+                sectionVisibility: sidebarSectionVisibility,
+                profilesAreExpanded: $profilesAreExpanded,
+                projectsAreExpanded: $projectsAreExpanded,
+                selectedProjectID: $selectedProjectID,
+                projectPendingDeletion: $projectPendingDeletion,
+                projectPendingRename: $projectPendingRename,
+                openDestination: selectDestination,
+                switchActiveProfile: { profile in
+                    Task { await switchActiveProfile(profile) }
+                },
+                presentProjectCreation: {
+                    isPresentingProjectCreation = true
                 }
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(searchChromeIsExpanded ? .secondary : .primary)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(searchChromeIsExpanded ? "Focus session search" : "Search sessions")
-            .accessibilityHint("Shows the session search field.")
-            .accessibilityHidden(searchChromeIsExpanded)
-
-            searchTextField
-
-            if showsSearchClearButton {
-                searchClearButton
-                    .transition(.scale.combined(with: .opacity))
-            }
-
-            searchTrailingButton
-        }
-        .padding(.vertical, 2)
-        .frame(maxWidth: searchChromeIsExpanded ? .infinity : nil, alignment: .trailing)
-        .sessionsChromeGlass(
-            isInteractive: true,
-            in: Capsule()
-        )
-        .clipShape(Capsule())
-        .contentShape(Capsule())
-    }
-
-    private var searchTextField: some View {
-        TextField("Search sessions", text: $searchText)
-            .font(AppFont.subheadline())
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .focused($searchFieldIsFocused)
-            .submitLabel(.done)
-            .lineLimit(1)
-            .layoutPriority(1)
-            .frame(maxWidth: searchChromeIsExpanded ? .infinity : 0)
-            .opacity(searchChromeIsExpanded ? 1 : 0)
-            .clipped()
-            .accessibilityHidden(!searchChromeIsExpanded)
-    }
-
-    private var searchClearButton: some View {
-        Button {
-            searchText = ""
-            searchFieldIsFocused = true
-        } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
-                .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Clear search")
-    }
-
-    private var searchTrailingButton: some View {
-        HapticButton(feedbackStyle: .medium) {
-            if searchChromeIsExpanded {
-                closeSearch()
-            } else {
-                selectDestination(.settings(nil))
-            }
-        } label: {
-            ZStack {
-                Text(settingsInitials)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(initialsAvatarForegroundColor)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .background(selectedHeaderLogoColor, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-                    .opacity(searchChromeIsExpanded ? 0 : 1)
-                    .scaleEffect(searchChromeIsExpanded ? 0.72 : 1)
-                    .rotationEffect(.degrees(searchChromeIsExpanded ? -18 : 0))
-
-                Image(systemName: "xmark")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .opacity(searchChromeIsExpanded ? 1 : 0)
-                    .scaleEffect(searchChromeIsExpanded ? 1 : 0.72)
-                    .rotationEffect(.degrees(searchChromeIsExpanded ? 0 : 18))
-            }
-            .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(searchChromeIsExpanded ? "Close search" : "Settings")
-        .accessibilityHint(
-            searchChromeIsExpanded
-                ? "Closes search and clears the current query."
-                : "Opens Settings. Long press to switch servers."
-        )
-        // Long-press the avatar to switch the active server, reusing #17's
-        // switch/add actions. Suppressed while search is expanded so the
-        // "close search" tap state is untouched (#283). The plain tap above is
-        // preserved — `contextMenu` adds long-press without stealing the tap.
-        .contextMenu {
-            if !searchChromeIsExpanded {
-                AvatarServerSwitcherMenu(
-                    model: AvatarServerSwitcherModel(
-                        servers: authManager.servers,
-                        activeServerID: authManager.activeServerID
-                    ),
-                    switchToServer: { account in
-                        authManager.switchActiveServer(to: account)
-                    },
-                    addServer: { isPresentingAddServer = true },
-                    manageServers: { selectDestination(.settings(.servers)) }
-                )
+            )
+            Section {
+                Button { selectDestination(.scheduled) } label: {
+                    Label("Scheduled Sessions", systemImage: "calendar")
+                }
+                Button { selectDestination(.archived) } label: {
+                    Label("Archived Sessions", systemImage: "archivebox")
+                }
+                Button { selectDestination(.settings(nil)) } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
             }
         }
+        .navigationTitle("Agent Tools")
+        .onChange(of: selectedProjectID) {
+            navigationState.clearDestination()
+        }
+        .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: profilesAreExpanded)
+        .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
     }
 
     private var newSessionButton: some View {
-        HapticButton(feedbackStyle: .medium) {
-            openNewChat()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "square.and.pencil")
-                    .font(.title3.weight(.semibold))
-
-                Text("Chat")
-                    .font(.headline.weight(.semibold))
-            }
-            .foregroundStyle(newSessionButtonForegroundColor)
-            .padding(.horizontal, 22)
-            .frame(height: 58)
-            // Lock the hit region to the visible capsule so taps in the padding,
-            // rounded ends, and icon↔text gap start a new chat instead of falling
-            // through to the session row behind the FAB (issue #242).
-            .contentShape(Capsule())
-            .background {
-                if let fill = newSessionButtonSolidThemeFill {
-                    Capsule().fill(fill)
-                }
-            }
-            .sessionsChromeGlass(
-                isInteractive: true,
-                tint: newSessionButtonGlassTint,
-                fallbackMaterial: .regularMaterial,
-                in: Capsule()
-            )
+        HapticButton(feedbackStyle: .medium, action: openNewChat) {
+            Image(systemName: "square.and.pencil")
+                .foregroundStyle(newSessionButtonForegroundColor)
         }
-        .buttonStyle(SessionListFloatingChatButtonStyle())
         .disabled(viewModel.isViewingCachedData || navigationState.isCreatingNewChat)
-        .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
-        .accessibilityLabel("New Session")
+        .accessibilityLabel("New Chat")
     }
 
     private var visibleSessions: [SessionSummary] {
@@ -862,15 +722,11 @@ struct SessionListView: View {
             return String(localized: "Try another search or project filter.")
         }
 
-        return String(localized: "Tap Chat to start.")
+        return String(localized: "Send a message to start the conversation.")
     }
 
     private var hasActiveSessionFilter: Bool {
         selectedProjectID != nil || !normalizedSearchText.isEmpty
-    }
-
-    private var showsSearchClearButton: Bool {
-        searchChromeIsExpanded && !searchText.isEmpty
     }
 
     private func isActiveProfile(_ profile: ProfileSummary) -> Bool {
@@ -883,64 +739,9 @@ struct SessionListView: View {
         return profile.isActive == true
     }
 
-    private var settingsInitials: String {
-        SessionIdentitySettings.displayInitials(
-            displayName: identityDisplayName,
-            storedInitials: identityInitials,
-            fallbackFullName: NSFullUserName()
-        )
-    }
-
-    private var selectedHeaderLogoColor: Color {
-        HeaderLogoColor.color(for: headerLogoColorHex)
-    }
-
-    private var newSessionButtonUsesThemeColor: Bool {
-        PrimaryActionTintSettings.usesThemeColor(
-            isEnabled: tintsPrimaryActions,
-            controlIsEnabled: !viewModel.isViewingCachedData
-        )
-    }
-
-    private var newSessionButtonSurface: AdaptiveGlassSurface {
-        AdaptiveGlassSurface.resolve(
-            liquidGlassAvailable: GlassPreference.isLiquidGlassSupported,
-            isGlassEnabled: isGlassEnabled,
-            reduceTransparency: reduceTransparency
-        )
-    }
-
-    // The glass tint is dropped on the material/opaque fallback surfaces, so a
-    // themed button would otherwise show its contrast-picked foreground over a
-    // neutral material (e.g. black-on-dark for a light theme color). Draw a
-    // solid header-color fill there so the button stays themed and readable;
-    // the liquid-glass surface keeps tinting via `newSessionButtonGlassTint`.
-    private var newSessionButtonSolidThemeFill: Color? {
-        guard newSessionButtonUsesThemeColor, newSessionButtonSurface != .liquidGlass else {
-            return nil
-        }
-
-        return selectedHeaderLogoColor
-    }
-
-    private var newSessionButtonGlassTint: Color {
-        if newSessionButtonUsesThemeColor {
-            return selectedHeaderLogoColor
-        }
-
-        return colorScheme == .dark ? .white : .black
-    }
-
     private var newSessionButtonForegroundColor: Color {
-        if newSessionButtonUsesThemeColor {
-            return HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
-        }
-
-        return colorScheme == .dark ? .black : .white
-    }
-
-    private var initialsAvatarForegroundColor: Color {
-        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+        if viewModel.isViewingCachedData { return Color(.tertiaryLabel) }
+        return tintsPrimaryActions ? HeaderLogoColor.color(for: headerLogoColorHex) : .accentColor
     }
 
     private var normalizedSearchText: String {
@@ -948,7 +749,7 @@ struct SessionListView: View {
     }
 
     private var isSearchingSessions: Bool {
-        isSearchVisible || isSearchFocused
+        isSearchVisible || !normalizedSearchText.isEmpty
     }
 
     private var remoteSearchTaskID: SessionSearchTaskID {
@@ -1008,23 +809,8 @@ struct SessionListView: View {
         await viewModel.loadActiveProfile()
     }
 
-    private func closeSearch() {
-        searchText = ""
-        searchFieldIsFocused = false
-        isSearchFocused = false
-
-        withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) {
-            searchChromeIsExpanded = false
-            isSearchVisible = false
-        }
-    }
-
     private func openSearch() {
-        withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) {
-            isSearchVisible = true
-            searchChromeIsExpanded = true
-        }
-        searchFieldIsFocused = true
+        isSearchVisible = true
     }
 
     private var sceneActions: HermexSceneActions {
@@ -1041,8 +827,6 @@ struct SessionListView: View {
     }
 
     private func openSearchFromKeyboard() {
-        searchFieldIsFocused = false
-
         if horizontalSizeClass != .regular {
             navigationState.clearDestination()
         }
@@ -1051,21 +835,6 @@ struct SessionListView: View {
             await Task.yield()
             openSearch()
         }
-    }
-
-    private func handleSearchFieldFocusChange(_ isFocused: Bool) {
-        guard isFocused else {
-            isSearchFocused = false
-            return
-        }
-
-        guard searchChromeIsExpanded || isSearchVisible else {
-            searchFieldIsFocused = false
-            isSearchFocused = false
-            return
-        }
-
-        isSearchFocused = true
     }
 
     private func refreshAfterReturningIfNeeded() {
@@ -1250,8 +1019,7 @@ struct SessionListView: View {
     }
 
     /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before
-    /// `restoreLastSelectedSessionIfNeeded()` — otherwise the restore races the deep
-    /// link's network load and wins with the previous session.
+    /// finishing the initial refresh so an explicit route stays authoritative.
     private func openPendingDeepLinkedSessionIfNeeded() async {
         guard !Task.isCancelled else { return }
 
@@ -1356,15 +1124,6 @@ struct SessionListView: View {
 
     private func removeSessionFromNavigation(_ session: SessionSummary) {
         navigationState.remove(sessionID: session.sessionId)
-        persistLastSelectedSession()
-    }
-
-    private func restoreLastSelectedSessionIfNeeded() {
-        navigationState.restoreIfNeeded(
-            from: viewModel.sessions,
-            clearsMissingSelection: viewModel.sessionLoadError == nil,
-            pendingDeepLinkedSessionID: pendingDeepLinkedSessionID
-        )
         persistLastSelectedSession()
     }
 
@@ -1501,6 +1260,7 @@ struct PendingNewChatRoute: Identifiable, Hashable {
 enum SessionListUtilityDestination: Hashable, Identifiable {
     /// Optional section to scroll to when Settings opens — "Manage Servers"
     /// passes `.servers`, a plain avatar tap passes `nil` (#283).
+    case tools
     case settings(SettingsScrollAnchor?)
     case tasks
     case kanban

@@ -3,7 +3,7 @@ import SwiftUI
 struct SessionRowView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption2) private var pinnedIconSize: CGFloat = 11
-    @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 8
+    @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 12
 
     let session: SessionSummary
     var showsMessageCount = true
@@ -18,13 +18,21 @@ struct SessionRowView: View {
     var searchExcerpt: SessionSearchExcerpt?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if Self.isActiveStreaming(session) {
-                ActiveSessionStreamingIndicator()
-                    .padding(.top, streamingIndicatorTopPadding)
-            }
-
+        HStack(alignment: .center, spacing: 12) {
+            ConversationAvatar(name: session.profile ?? displayTitle)
+                .overlay(alignment: .bottomTrailing) {
+                    if effectiveAttentionState == .working {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                    }
+                }
             rowContent
+            Image(systemName: "chevron.forward")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, verticalPadding)
@@ -37,7 +45,7 @@ struct SessionRowView: View {
     static func displayTitle(for session: SessionSummary) -> String {
         let title = session.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let title, !title.isEmpty else {
-            return String(localized: "Untitled Session")
+            return String(localized: "New Chat")
         }
         return title
     }
@@ -154,6 +162,11 @@ struct SessionRowView: View {
 
             if let searchExcerpt {
                 excerptText(searchExcerpt)
+            } else if let profile = session.profile, !profile.isEmpty {
+                Text(profile)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             if showsSupplementalContent {
@@ -343,12 +356,12 @@ struct SessionRowView: View {
     }
 
     private var rowMinimumHeight: CGFloat {
-        let base: CGFloat = showsSupplementalContent ? 54 : 46
+        let base: CGFloat = 76
         return searchExcerpt == nil ? base : base + 16
     }
 
     private var titleLineLimit: Int {
-        dynamicTypeSize.isAccessibilitySize ? 3 : 2
+        dynamicTypeSize.isAccessibilitySize ? 3 : 1
     }
 
     private var metadataLineLimit: Int {
@@ -509,40 +522,6 @@ private struct SessionRowStateBadge: View {
             .padding(.vertical, 2)
             .background(badge.tint.opacity(0.12), in: Capsule())
             .accessibilityHidden(true)
-    }
-}
-
-private struct ActiveSessionStreamingIndicator: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isExpanded = false
-
-    var body: some View {
-        Circle()
-            .fill(.green)
-            .frame(width: 9, height: 9)
-            .scaleEffect(reduceMotion ? 1 : (isExpanded ? 1.4 : 1.0))
-            .accessibilityHidden(true)
-            .onAppear {
-                updateAnimation()
-            }
-            .onChange(of: reduceMotion) {
-                updateAnimation()
-            }
-            .onDisappear {
-                isExpanded = false
-            }
-    }
-
-    private func updateAnimation() {
-        guard !reduceMotion else {
-            isExpanded = false
-            return
-        }
-
-        isExpanded = false
-        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-            isExpanded = true
-        }
     }
 }
 

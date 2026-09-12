@@ -72,6 +72,10 @@ struct MessageBubbleView: View {
             userMessageRow
         } else if textOnly {
             MarkdownRenderer(content: message.content ?? "")
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(MessagesAppearance.incoming, in: RoundedRectangle(cornerRadius: 20))
+                .padding(.trailing, userBubbleLeadingGutter)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             assistantMessageRow
@@ -128,6 +132,10 @@ struct MessageBubbleView: View {
 
             linkPreview
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(MessagesAppearance.incoming, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.trailing, userBubbleLeadingGutter)
         .frame(maxWidth: .infinity, alignment: .leading)
         // While this row is the active streaming message, animate its height
         // growth at the same curve as the bottom-follow scroll so the streaming
@@ -431,15 +439,15 @@ struct MessageBubbleView: View {
     }
 
     private var userBubbleLeadingGutter: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 20 : 32
+        dynamicTypeSize.isAccessibilitySize ? 12 : 44
     }
 
     private var userBubbleBackground: Color {
-        colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
+        MessagesAppearance.outgoing
     }
 
     private var userBubbleForeground: Color {
-        Color(.label)
+        .white
     }
 
     private var userBubbleBorder: Color {

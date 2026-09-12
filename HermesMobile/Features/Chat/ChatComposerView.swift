@@ -439,8 +439,12 @@ struct MessageComposerView: View {
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
 
-                composerSurface
-                    .padding(.horizontal)
+                HStack(alignment: .bottom, spacing: 8) {
+                    composerPlusMenu
+                        .padding(.bottom, 5)
+                    composerSurface
+                }
+                .padding(.horizontal)
 
                 if isExpanded {
                     toolbarRow
@@ -690,9 +694,8 @@ struct MessageComposerView: View {
             || showFileImporter
     }
 
-    /// The glass surface: one text view in both states so focus and the draft
-    /// survive the morph. Pill: text, thumbnails, mic, Stop/Send in a row.
-    /// Card: strip above the editor, controls move to `toolbarRow` below.
+    /// One message field preserves focus and the draft as it grows. Attachments
+    /// expand above it; voice and Send/Stop stay beside the text in both states.
     private var composerSurface: some View {
         VStack(spacing: 0) {
             if isExpanded {
@@ -737,13 +740,11 @@ struct MessageComposerView: View {
                         attachments: pendingAttachments,
                         onPreview: onPreviewAttachment
                     )
-
-                    voiceControlButton
-
-                    actionButton
                 }
+                voiceControlButton
+                actionButton
             }
-            .padding(.trailing, isExpanded ? 0 : pillInset)
+            .padding(.trailing, pillInset)
             .padding(.vertical, isExpanded ? 0 : pillInset)
         }
         .padding(.top, isExpanded ? 2 : 0)
@@ -751,13 +752,10 @@ struct MessageComposerView: View {
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
     }
 
-    /// Card-state row under the surface: a scroller of secondary controls plus
-    /// the pinned Stop/Send circle. Visual order is VoiceOver order.
+    /// Agent controls appear beneath the focused message field.
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
             ComposerToolbarScroller {
-                composerPlusMenu
-
                 modelEffortControl
 
                 workspaceSelector
@@ -766,13 +764,9 @@ struct MessageComposerView: View {
 
                 gitBranchPicker
 
-                voiceControlButton
-
                 ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
                     .padding(.horizontal, 4)
             }
-
-            actionButton
         }
     }
 
